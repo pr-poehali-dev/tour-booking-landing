@@ -1,0 +1,23 @@
+{
+  "tests": [
+    {
+      "name": "Handle OPTIONS request",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Confirm payment with missing order_id",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "confirmation_message": "Payment received"
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "Missing order_id"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

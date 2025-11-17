@@ -26,6 +26,8 @@ const Index = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showPayment, setShowPayment] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
   const [paymentData, setPaymentData] = useState({
     name: '',
     email: '',
@@ -101,17 +103,72 @@ const Index = () => {
     setShowPayment(true);
   };
 
-  const handlePaymentSubmit = (e: React.FormEvent) => {
+  const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setShowPayment(false);
-    setShowConfirmation(true);
+    
+    try {
+      const response = await fetch('https://functions.poehali.dev/f022433e-eb07-409d-8b88-02027d64521b', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: paymentData.name,
+          email: paymentData.email,
+          phone: paymentData.phone,
+          notes: paymentData.notes,
+          items: cart.map(item => ({
+            id: item.id,
+            title: item.title,
+            price: item.price,
+            type: item.type
+          })),
+          total: totalPrice
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setOrderId(data.order_id);
+        setShowPayment(false);
+        setShowConfirmation(true);
+        startPolling(data.order_id);
+        toast.success(language === 'en' ? 'Order sent! Waiting for payment confirmation...' : language === 'es' ? '¡Pedido enviado! Esperando confirmación...' : language === 'it' ? 'Ordine inviato! In attesa di conferma...' : 'Commande envoyée! En attente de confirmation...');
+      } else {
+        toast.error(language === 'en' ? 'Failed to create order' : language === 'es' ? 'Error al crear pedido' : language === 'it' ? 'Errore nella creazione ordine' : 'Échec de la création de commande');
+      }
+    } catch (error) {
+      console.error('Order creation failed:', error);
+      toast.error(language === 'en' ? 'Connection error' : language === 'es' ? 'Error de conexión' : language === 'it' ? 'Errore di connessione' : 'Erreur de connexion');
+    }
   };
 
-  const handlePaymentConfirm = () => {
-    toast.success(language === 'en' ? 'Order confirmed! We will contact you shortly.' : language === 'es' ? '¡Pedido confirmado! Te contactaremos pronto.' : language === 'it' ? 'Ordine confermato! Ti contatteremo presto.' : 'Commande confirmée! Nous vous contacterons bientôt.');
-    setShowConfirmation(false);
-    setCart([]);
-    setPaymentData({ name: '', email: '', phone: '', notes: '' });
+  const startPolling = (orderIdToCheck: string) => {
+    setIsPolling(true);
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`https://functions.poehali.dev/4a529811-8a2b-432d-b51f-3df41c661a3e?order_id=${orderIdToCheck}`);
+        const data = await response.json();
+        
+        if (data.payment_confirmed) {
+          clearInterval(interval);
+          setIsPolling(false);
+          setShowConfirmation(false);
+          toast.success(language === 'en' ? 'Payment confirmed! Thank you for your order!' : language === 'es' ? '¡Pago confirmado! ¡Gracias por tu pedido!' : language === 'it' ? 'Pagamento confermato! Grazie per il tuo ordine!' : 'Paiement confirmé! Merci pour votre commande!');
+          setCart([]);
+          setPaymentData({ name: '', email: '', phone: '', notes: '' });
+          setOrderId(null);
+        }
+      } catch (error) {
+        console.error('Polling error:', error);
+      }
+    }, 3000);
+    
+    setTimeout(() => {
+      clearInterval(interval);
+      setIsPolling(false);
+    }, 300000);
   };
 
   return (
@@ -393,25 +450,56 @@ const Index = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showConfirmation} onOpenChange={setShowConfirmation}>
+      <Dialog open={showConfirmation} onOpenChange={(open) => {
+        if (!open && isPolling) {
+          setIsPolling(false);
+        }
+        setShowConfirmation(open);
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t.payment.confirmation}</DialogTitle>
-            <DialogDescription>{t.payment.confirmMessage}</DialogDescription>
+            <DialogDescription>
+              {isPolling 
+                ? (language === 'en' ? 'Waiting for payment confirmation from our team...' : language === 'es' ? 'Esperando confirmación de pago de nuestro equipo...' : language === 'it' ? 'In attesa della conferma di pagamento dal nostro team...' : 'En attente de confirmation de paiement de notre équipe...')
+                : t.payment.confirmMessage
+              }
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-4">
+            {orderId && (
+              <div className="bg-muted p-4 rounded-lg mb-4">
+                <p className="text-sm text-muted-foreground mb-1">
+                  {language === 'en' ? 'Order ID' : language === 'es' ? 'ID del Pedido' : language === 'it' ? 'ID Ordine' : 'ID de Commande'}
+                </p>
+                <p className="font-mono font-bold text-primary text-lg">{orderId}</p>
+              </div>
+            )}
             <p><strong>{t.payment.name}:</strong> {paymentData.name}</p>
             <p><strong>{t.payment.email}:</strong> {paymentData.email}</p>
             <p><strong>{t.payment.phone}:</strong> {paymentData.phone}</p>
             <p><strong>{t.cart.total}:</strong> ${totalPrice}</p>
             {paymentData.notes && <p><strong>{t.payment.notes}:</strong> {paymentData.notes}</p>}
+            
+            {isPolling && (
+              <div className="flex items-center justify-center gap-2 py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                <p className="text-sm text-muted-foreground">
+                  {language === 'en' ? 'Checking payment status...' : language === 'es' ? 'Verificando estado del pago...' : language === 'it' ? 'Verifica dello stato del pagamento...' : 'Vérification du statut de paiement...'}
+                </p>
+              </div>
+            )}
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setShowConfirmation(false)} className="flex-1">
-              {t.payment.cancel}
-            </Button>
-            <Button onClick={handlePaymentConfirm} className="flex-1">
-              {t.payment.confirmButton}
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowConfirmation(false);
+                setIsPolling(false);
+              }} 
+              className="flex-1"
+            >
+              {language === 'en' ? 'Close' : language === 'es' ? 'Cerrar' : language === 'it' ? 'Chiudi' : 'Fermer'}
             </Button>
           </div>
         </DialogContent>

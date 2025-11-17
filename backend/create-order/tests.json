@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "name": "Create order successfully",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "name": "John Doe",
+        "email": "john@example.com",
+        "phone": "+1234567890",
+        "notes": "Test order",
+        "items": [
+          {
+            "id": "1",
+            "title": "Test Tour",
+            "price": 299
+          }
+        ],
+        "total": 299
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "order_id": "string",
+        "status": "pending"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Handle OPTIONS request",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}
